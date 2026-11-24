@@ -12,6 +12,7 @@ export const router = createRouter({
     { path: '/feld/einstellungen', component: () => import('./views/KompaktEinstellungen.vue') },
     { path: '/burg/:id', component: () => import('./views/BurgEdit.vue') },
     { path: '/kataloge', component: () => import('./views/KatalogView.vue') },
+    { path: '/pflege', component: () => import('./views/PflegeView.vue') },
     { path: '/daten', component: () => import('./views/DatenView.vue') },
   ],
   scrollBehavior: () => ({ top: 0 }),

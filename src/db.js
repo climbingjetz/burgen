@@ -14,3 +14,12 @@ db.version(1).stores({
 db.version(2).stores({
   geloescht: 'id',
 })
+
+// v3: Zusatzdateien je Burg (Notizen, Audio, Video, Dokumente …) und Geräte-Einstellungen
+//   dateien: { id, burgId, name, typ, groesse, blob|null, driveId, notiz, erstellt, geaendert, geloescht, uploadUrl }
+//            blob = null → Datei liegt nur in Drive (wird nach dem Hochladen lokal freigegeben)
+//   einstellungen: { key, value } – z. B. der gewählte Sicherungsordner
+db.version(3).stores({
+  dateien: 'id, burgId',
+  einstellungen: 'key',
+})

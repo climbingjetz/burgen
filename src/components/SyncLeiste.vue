@@ -36,6 +36,7 @@ const wartetText = computed(() => {
   const teile = []
   if (syncState.offenDaten) teile.push(`${syncState.offenDaten} Burg${syncState.offenDaten > 1 ? 'en' : ''}`)
   if (syncState.bilderHoch) teile.push(`${syncState.bilderHoch} Bild${syncState.bilderHoch > 1 ? 'er' : ''} (${mb(syncState.bytesHoch)})`)
+  if (syncState.dateienHoch) teile.push(`${syncState.dateienHoch} Datei${syncState.dateienHoch > 1 ? 'en' : ''} (${mb(syncState.bytesDateien)})`)
   if (syncState.offenSonst && !teile.length) teile.push(`${syncState.offenSonst} Änderung${syncState.offenSonst > 1 ? 'en' : ''}`)
   return teile.join(' + ')
 })

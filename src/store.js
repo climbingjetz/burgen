@@ -81,13 +81,52 @@ export async function saveBurg(burg, bilder = []) {
 }
 
 export async function deleteBurg(id) {
-  await db.transaction('rw', db.burgen, db.bilder, db.geloescht, async () => {
+  await db.transaction('rw', db.burgen, db.bilder, db.geloescht, db.dateien, async () => {
+    await db.dateien.where('burgId').equals(id).delete() // liegen in Drive im Burgordner, der mit in den Papierkorb geht
     const b = await db.burgen.get(id)
     // Grabstein für den Abgleich – nur nötig, wenn die Burg schon in Drive liegen kann
     if (b) await db.geloescht.put({ id, zeit: new Date().toISOString(), driveOrdner: b.driveOrdner || '' })
     await db.burgen.delete(id)
     await db.bilder.where('burgId').equals(id).delete()
   })
+}
+
+// ---------- Zusatzdateien je Burg ----------
+// Liegen zuerst auf dem Gerät, werden beim Abgleich nach Drive hochgeladen und danach lokal freigegeben.
+
+export async function getDateien(burgId) {
+  const l = await db.dateien.where('burgId').equals(burgId).toArray()
+  return l.filter((d) => !d.geloescht).sort((a, b) => (a.erstellt || '').localeCompare(b.erstellt || ''))
+}
+
+export async function addDatei(burgId, blob, name, notiz = '') {
+  const jetzt = new Date().toISOString()
+  const d = {
+    id: `${burgId}-D${Date.now().toString(36)}${rid().slice(0, 4)}`,
+    burgId,
+    name: (name || 'Datei').replace(/[\\/:*?"<>|]+/g, '_'),
+    typ: blob.type || 'application/octet-stream',
+    groesse: blob.size || 0,
+    blob,
+    driveId: '',
+    notiz,
+    erstellt: jetzt,
+    geaendert: jetzt,
+    geloescht: '',
+    uploadUrl: '',
+  }
+  await db.dateien.put(d)
+  return d
+}
+
+export const updateDatei = (id, changes) => db.dateien.update(id, { ...changes, geaendert: new Date().toISOString() })
+
+// Löschen wird beim nächsten Abgleich nach Drive übertragen (Papierkorb)
+export async function deleteDatei(id) {
+  const d = await db.dateien.get(id)
+  if (!d) return
+  const jetzt = new Date().toISOString()
+  await db.dateien.update(id, { geloescht: jetzt, geaendert: jetzt, blob: null })
 }
 
 // ---------- Kataloge ----------

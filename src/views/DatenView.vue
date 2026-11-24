@@ -100,7 +100,7 @@ function regelWaehlen(k) {
 // Burgen, die noch nicht vollständig in der Cloud sind
 const alleBurgen = ref([])
 const offeneBurgen = computed(() =>
-  alleBurgen.value.filter((b) => cloud[b.id] && (cloud[b.id].daten || cloud[b.id].hoch || cloud[b.id].runter)),
+  alleBurgen.value.filter((b) => cloud[b.id] && (cloud[b.id].daten || cloud[b.id].hoch || cloud[b.id].runter || cloud[b.id].dateien)),
 )
 async function burgenLaden() {
   alleBurgen.value = await listBurgen()
@@ -179,28 +179,8 @@ function trennen() {
     </section>
 
     <section class="card">
-      <h2>Datensicherung</h2>
-      <p>
-        Zusätzlich zu Google Drive kannst du hier eine komplette Sicherungsdatei herunterladen – sie enthält alle Burgen,
-        Bilder und Kataloge und lässt sich jederzeit wieder einspielen.
-      </p>
-      <div class="row">
-        <button class="btn primary" :disabled="busy" @click="sichern">⬇ Sicherung herunterladen</button>
-        <label class="btn" :class="{ disabled: busy }">
-          ⬆ Sicherung einspielen
-          <input type="file" accept=".json,application/json" hidden @change="wiederherstellen" />
-        </label>
-      </div>
-      <p class="hint">Letzte Sicherung: {{ letzte ? new Date(letzte).toLocaleString('de-DE') : 'noch nie' }}</p>
-    </section>
-
-    <section class="card">
-      <h2>Speicher</h2>
-      <p v-if="speicher">Belegt: {{ mb(speicher.genutzt) }} von {{ mb(speicher.frei) }} verfügbar.</p>
-      <p v-if="dauerhaft !== null">
-        Dauerhafte Speicherung: <strong>{{ dauerhaft ? 'aktiv' : 'nicht gewährt' }}</strong>
-        <span v-if="!dauerhaft" class="hint"> – der Browser könnte die Daten bei Speichermangel löschen. Installiere die App auf dem Startbildschirm, dann wird es meist gewährt.</span>
-      </p>
+      <h2>Datensicherung &amp; Speicher</h2>
+      <p>Automatische Sicherung, Sicherungsdateien, Datenqualität und Speicher findest du im Reiter <router-link to="/pflege">🧰 Pflege</router-link>.</p>
     </section>
 
     <section class="card">

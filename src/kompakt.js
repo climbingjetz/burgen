@@ -7,6 +7,7 @@ import { ALL_FIELDS, GEO_FIELDS } from './fields.js'
 export const SONDERFELDER = [
   { key: '_gps', label: 'Position (GPS & Karte)', type: 'sonder' },
   { key: '_fotos', label: 'Fotos', type: 'sonder' },
+  { key: '_dateien', label: 'Dateien (Notiz, Sprachnotiz, Video …)', type: 'sonder' },
 ]
 
 const geoKeys = new Set(GEO_FIELDS.map((f) => f.key))

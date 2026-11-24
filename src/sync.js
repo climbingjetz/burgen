@@ -30,6 +30,8 @@ export const syncState = reactive({
   bilderHoch: 0,
   bytesHoch: 0,
   bilderRunter: 0,
+  dateienHoch: 0, // Zusatzdateien, die noch nicht in Drive sind
+  bytesDateien: 0,
   wartet: '', // Grund, warum Bilder gerade nicht übertragen werden
   pauseBis: 0,
   brauchtAnmeldung: false,
@@ -96,9 +98,23 @@ function pausieren() {
 // ---------- Zählen ----------
 
 export async function zaehleOffen() {
-  const [burgen, bilder] = await Promise.all([db.burgen.toArray(), db.bilder.toArray()])
+  const [burgen, bilder, dateien] = await Promise.all([db.burgen.toArray(), db.bilder.toArray(), db.dateien.toArray()])
   const neu = {}
-  for (const b of burgen) neu[b.id] = { daten: b.cloudStand !== b.geaendert, hoch: 0, runter: 0 }
+  for (const b of burgen) neu[b.id] = { daten: b.cloudStand !== b.geaendert, hoch: 0, runter: 0, dateien: 0 }
+  let dHoch = 0
+  let dBytes = 0
+  let dLoeschen = 0
+  for (const d of dateien) {
+    if (d.geloescht) {
+      dLoeschen++
+    } else if (d.blob && !d.driveId && neu[d.burgId]) {
+      neu[d.burgId].dateien++
+      dHoch++
+      dBytes += d.blob.size || 0
+    }
+  }
+  syncState.dateienHoch = dHoch
+  syncState.bytesDateien = dBytes
   let bytes = 0
   let hoch = 0
   let runter = 0
@@ -119,13 +135,13 @@ export async function zaehleOffen() {
 
   const l = syncState.letzter
   syncState.offenDaten = Object.values(neu).filter((c) => c.daten).length
-  syncState.offenSonst = (await db.geloescht.count()) + (katalogStand() > (l || '') ? 1 : 0) + (kompaktStand() > (l || '') ? 1 : 0)
+  syncState.offenSonst = (await db.geloescht.count()) + dLoeschen + (katalogStand() > (l || '') ? 1 : 0) + (kompaktStand() > (l || '') ? 1 : 0)
   syncState.bilderHoch = hoch
   syncState.bytesHoch = bytes
   syncState.bilderRunter = runter
-  syncState.offen = syncState.offenDaten + syncState.offenSonst + hoch
+  syncState.offen = syncState.offenDaten + syncState.offenSonst + hoch + dHoch
   syncState.verbunden = localStorage.getItem('google.verbunden') === '1'
-  if (!hoch && !runter) syncState.wartet = ''
+  if (!hoch && !runter && !dHoch) syncState.wartet = ''
   return syncState.offen
 }
 
@@ -308,12 +324,16 @@ export async function synchronisiere(remote, { auto = false, erzwingen = false }
     }
     const kStand = kompaktStand()
 
+    // Zusatzdateien: Metadaten abgleichen (Inhalte folgen in Phase 2)
+    const remoteDateien = await dateienAbgleichen(remote, R.dateien || [], remoteBurgen, log)
+
     const jetzt = new Date().toISOString()
     const schreibeTabelle = () =>
       remote.speichern({
         burgen: [...remoteBurgen.values()].sort((a, b) => String(a.name).localeCompare(String(b.name), 'de')),
         bilder: [...remoteBilder.values()].flat().sort((a, b) => a.burgId.localeCompare(b.burgId) || a.pos - b.pos),
         katalog,
+        dateien: [...remoteDateien.values()].sort((a, b) => a.burgId.localeCompare(b.burgId) || (a.erstellt || '').localeCompare(b.erstellt || '')),
         meta: {
           katalogGeaendert: katalogStand(),
           kompaktGeaendert: kStand || kRemote,
@@ -343,7 +363,8 @@ export async function synchronisiere(remote, { auto = false, erzwingen = false }
     // ---------- Phase 2: Bilder ----------
     const hoch = (await db.bilder.toArray()).filter((b) => b.blob && !b.driveId && remoteBurgen.has(b.burgId))
     const runter = (await db.bilder.toArray()).filter((b) => !b.blob && b.driveId)
-    if (hoch.length || runter.length) {
+    const dateienHoch = (await db.dateien.toArray()).filter((d) => d.blob && !d.driveId && !d.geloescht && remoteBurgen.has(d.burgId))
+    if (hoch.length || runter.length || dateienHoch.length) {
       const regel = bilderErlaubt()
       const pausiert = syncState.pauseBis > Date.now()
       if (!erzwingen && (!regel.ok || pausiert)) {
@@ -352,7 +373,7 @@ export async function synchronisiere(remote, { auto = false, erzwingen = false }
       } else {
         syncState.wartet = ''
         syncState.phase = 'bilder'
-        await bilderUebertragen(remote, hoch, runter, remoteBilder, schreibeTabelle, stat, log)
+        await bilderUebertragen(remote, hoch, runter, remoteBilder, schreibeTabelle, stat, log, dateienHoch, remoteDateien)
       }
     }
 
@@ -384,11 +405,76 @@ export async function synchronisiere(remote, { auto = false, erzwingen = false }
   }
 }
 
-async function bilderUebertragen(remote, hoch, runter, remoteBilder, schreibeTabelle, stat, log) {
+// Zusatzdateien: Metadaten zwischen Gerät und Tabelle abgleichen.
+// Gibt die Zeilen zurück, die in die Tabelle geschrieben werden.
+async function dateienAbgleichen(remote, remoteListe, remoteBurgen, log) {
+  const lebend = (burgId) => {
+    const r = remoteBurgen.get(burgId)
+    return r && !r.geloescht
+  }
+  const remoteD = new Map(remoteListe.filter((d) => d.id && !d.geloescht && lebend(d.burgId)).map((d) => [d.id, d]))
+  const lokal = await db.dateien.toArray()
+  const lokalIds = new Set(lokal.map((d) => d.id))
+  const meta = (d) => ohne(d, 'blob', 'uploadUrl')
+
+  for (const l of lokal) {
+    const r = remoteD.get(l.id)
+    // lokal gelöscht → in Drive in den Papierkorb
+    if (l.geloescht) {
+      const driveId = l.driveId || r?.driveId
+      if (driveId) await remote.papierkorb(driveId)
+      remoteD.delete(l.id)
+      await db.dateien.delete(l.id)
+      log(`Datei gelöscht: ${l.name}`)
+      continue
+    }
+    // Burg gibt es nicht mehr
+    if (!lebend(l.burgId) && !(await db.burgen.get(l.burgId))) {
+      await db.dateien.delete(l.id)
+      continue
+    }
+    if (!r) {
+      if (l.driveId || !l.blob) {
+        // war schon in Drive (oder nur als Verweis da) und fehlt jetzt → anderswo gelöscht
+        await db.dateien.delete(l.id)
+        log(`Datei auf anderem Gerät gelöscht: ${l.name}`)
+      } else {
+        remoteD.set(l.id, meta(l)) // neu von diesem Gerät, Inhalt folgt
+      }
+      continue
+    }
+    // beide vorhanden: neuere Beschreibung gewinnt, Drive-Kennung ergänzen
+    const driveId = l.driveId || r.driveId || ''
+    if ((l.geaendert || '') > (r.geaendert || '')) {
+      if (driveId && l.name !== r.name) {
+        try {
+          await remote.umbenennen(driveId, l.name)
+        } catch (e) {
+          if (e.status !== 404) throw e
+        }
+      }
+      remoteD.set(l.id, { ...meta(l), driveId })
+    }
+    else if ((r.geaendert || '') > (l.geaendert || '')) await db.dateien.update(l.id, { name: r.name, notiz: r.notiz, geaendert: r.geaendert, driveId })
+    else if (!r.driveId && driveId) r.driveId = driveId
+    if (!l.driveId && r.driveId) {
+      // ein anderes Gerät hat den Inhalt hochgeladen
+      await db.dateien.update(l.id, l.blob ? { driveId: r.driveId, blob: null, uploadUrl: '' } : { driveId: r.driveId })
+    }
+  }
+  // neue Dateien von anderen Geräten: nur als Verweis (Inhalt liegt in Drive)
+  for (const r of remoteD.values()) {
+    if (!lokalIds.has(r.id) && (await db.burgen.get(r.burgId))) await db.dateien.put({ ...r, blob: null, uploadUrl: '' })
+  }
+  return remoteD
+}
+
+async function bilderUebertragen(remote, hoch, runter, remoteBilder, schreibeTabelle, stat, log, dateien = [], remoteDateien = new Map()) {
   hoch.sort((a, b) => a.burgId.localeCompare(b.burgId) || a.pos - b.pos)
+  dateien.sort((a, b) => (a.blob.size || 0) - (b.blob.size || 0)) // kleine zuerst (Notizen, Audio), Videos zuletzt
   const B = syncState.bild
-  B.gesamt = hoch.length + runter.length
-  B.bytesGesamt = hoch.reduce((s, b) => s + (b.blob.size || 0), 0)
+  B.gesamt = hoch.length + runter.length + dateien.length
+  B.bytesGesamt = hoch.reduce((s, b) => s + (b.blob.size || 0), 0) + dateien.reduce((s, d) => s + (d.blob.size || 0), 0)
   let tabelleNeu = false
   try {
     for (const b of hoch) {
@@ -425,6 +511,48 @@ async function bilderUebertragen(remote, hoch, runter, remoteBilder, schreibeTab
       }
       B.fertig++
       stat.bilderHoch++
+      await zaehleOffen()
+    }
+    for (const d of dateien) {
+      const burg = await db.burgen.get(d.burgId)
+      const aktuell = await db.dateien.get(d.id)
+      if (!burg || !aktuell?.blob || aktuell.driveId || aktuell.geloescht) {
+        B.fertig++
+        continue
+      }
+      syncState.aktuell = `${burg.name} – ${aktuell.name}`
+      syncState.aktuellId = burg.id
+      B.prozent = 0
+      let ordner = burg.driveOrdner
+      if (!ordner) {
+        ordner = await remote.burgOrdner(burg)
+        await db.burgen.update(burg.id, { driveOrdner: ordner })
+      }
+      const unter = await remote.dateienOrdner(ordner)
+      const basis = B.bytesFertig
+      const groesse = aktuell.blob.size || 1
+      const driveId = await remote.hochladenFortsetzbar(aktuell.blob, aktuell.name, unter, {
+        sitzung: aktuell.uploadUrl,
+        onSitzung: (url) => db.dateien.update(d.id, { uploadUrl: url }),
+        onProgress: (geladen, gesamt) => {
+          B.prozent = Math.round((geladen / gesamt) * 100)
+          B.bytesFertig = basis + Math.round((geladen / gesamt) * groesse)
+        },
+      })
+      B.bytesFertig = basis + groesse
+      const nach = await db.dateien.get(d.id)
+      if (nach && !nach.geloescht) {
+        // in Drive angekommen → lokale Kopie freigeben (Drive ist der Hauptspeicher)
+        await db.dateien.update(d.id, { driveId, blob: null, uploadUrl: '' })
+        const row = remoteDateien.get(d.id)
+        if (row) row.driveId = driveId
+        else remoteDateien.set(d.id, { ...ohne(nach, 'blob', 'uploadUrl'), driveId })
+        tabelleNeu = true
+      } else {
+        await remote.papierkorb(driveId)
+      }
+      B.fertig++
+      stat.dateienHoch = (stat.dateienHoch || 0) + 1
       await zaehleOffen()
     }
     for (const b of runter) {

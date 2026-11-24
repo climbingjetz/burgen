@@ -33,6 +33,9 @@ Dann im Browser http://localhost:5173 öffnen.
 - [x] Karte (Straße / Topo / Luftbild), Position per Klick setzen
 - [x] Export CSV / GPX / GeoJSON (alle, Auswahl, einzeln), Datensicherung
 - [x] QGIS-Paket (ZIP): GeoPackage mit eingebautem Stil (Beschriftung, Formular, Auswahllisten, Bilder) + Projekt – `src/utils/geopackage.js`, `src/utils/qgisStil.js`
+- [x] Textdokument (ODT) für LibreOffice/Word – `src/utils/odt.js`
+- [x] Zusatzdateien je Burg (Notizen, Sprachnotizen, Videos, Dokumente) – zuerst lokal, dann Drive (fortsetzbarer Upload)
+- [x] Reiter Pflege: automatische Sicherung (DB 2×/Tag, 10 Generationen; Bilder 1×/Tag, 4 Generationen), Datenqualität, Statistik – `src/sicherung.js`
 - [x] PDF-Datenblatt (einzeln aus dem Formular, mehrere aus der Liste) – `src/utils/pdf.js`
 - [x] Google Sheets / Drive-Abgleich – Einrichtung siehe [GOOGLE-EINRICHTUNG.md](GOOGLE-EINRICHTUNG.md)
 - [x] Konfigurierbarer Kompaktmodus (Feld → ⚙ Felder), wird über Drive abgeglichen

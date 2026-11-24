@@ -2,7 +2,7 @@
 // Kompaktmodus: schnelle Ersterfassung im Gelände. Aufbau gemäß kompakt.js (konfigurierbar).
 import { ref, computed } from 'vue'
 import { emptyBurg } from '../fields.js'
-import { newId, saveBurg } from '../store.js'
+import { newId, saveBurg, addDatei } from '../store.js'
 import { toast } from '../composables/toast.js'
 import { autoSync } from '../sync.js'
 import { kompakt, feldDef, vorbelegung, vorbelegungSpeichern } from '../kompakt.js'
@@ -10,6 +10,7 @@ import GpsButton from '../components/GpsButton.vue'
 import BilderEditor from '../components/BilderEditor.vue'
 import MapPicker from '../components/MapPicker.vue'
 import FeldEingabe from '../components/FeldEingabe.vue'
+import DateienEditor from '../components/DateienEditor.vue'
 import CloudChip from '../components/CloudChip.vue'
 
 const eintraege = computed(() => kompakt.felder.map((e) => ({ ...e, def: feldDef(e.key) })).filter((e) => e.def))
@@ -24,6 +25,7 @@ function neueBurg() {
 
 const form = ref(neueBurg())
 const bilder = ref([])
+const dateien = ref([]) // gesammelte Zusatzdateien, werden mit der Burg gespeichert
 const runde = ref(0) // erzwingt neuen GPS-Start nach dem Speichern
 const zuletzt = ref(null)
 const speichert = ref(false)
@@ -50,6 +52,7 @@ async function speichern() {
       { ...form.value, id, name, besuchsdatum: form.value.besuchsdatum || new Date().toISOString().slice(0, 10) },
       bilder.value,
     )
+    for (const d of dateien.value) await addDatei(rec.id, d.blob, d.name, d.notiz)
     // gemerkte Felder für die nächste Burg vorbelegen
     const v = vorbelegung()
     for (const e of kompakt.felder) if (e.merken) v[e.key] = rec[e.key]
@@ -58,6 +61,7 @@ async function speichern() {
     zuletzt.value = rec
     form.value = neueBurg()
     bilder.value = []
+    dateien.value = []
     runde.value++
     window.scrollTo({ top: 0, behavior: 'smooth' })
     toast('Auf dem Gerät gespeichert ✓')
@@ -96,6 +100,11 @@ async function speichern() {
           <span v-if="form.hoehe != null">· {{ form.hoehe }} m</span>
         </div>
         <MapPicker v-if="form.lat != null" :lat="form.lat" :lon="form.lon" height="220px" @pick="karte" />
+      </section>
+
+      <section v-else-if="e.key === '_dateien'" class="card">
+        <h2>Dateien</h2>
+        <DateienEditor v-model="dateien" big />
       </section>
 
       <section v-else-if="e.key === '_fotos'" class="card">

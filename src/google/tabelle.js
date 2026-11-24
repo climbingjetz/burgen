@@ -6,6 +6,7 @@ const TYP = Object.fromEntries(ALL_FIELDS.map((f) => [f.key, f.type]))
 
 export const BURG_COLS = ['id', ...ALL_FIELDS.map((f) => f.key), 'driveOrdner', 'erstellt', 'geaendert', 'version', 'geloescht']
 export const BILD_COLS = ['id', 'burgId', 'pos', 'dateiname', 'driveId', 'caption', 'datum', 'lat', 'lon', 'hoehe']
+export const DATEI_COLS = ['id', 'burgId', 'name', 'typ', 'groesse', 'driveId', 'notiz', 'erstellt', 'geaendert', 'geloescht']
 export const KAT_COLS = ['katalog', 'schluessel', 'wert', 'sort', 'aktiv', 'parent']
 
 const zelle = (v) => (v == null ? '' : Array.isArray(v) ? v.join('|') : v)
@@ -17,7 +18,7 @@ export function zuZeilen(cols, list) {
 function wertLesen(key, v) {
   const t = TYP[key]
   if (t === 'katMulti') return String(v ?? '').split('|').filter(Boolean)
-  if (t === 'number' || ['pos', 'version', 'sort', 'lat', 'lon', 'hoehe'].includes(key)) {
+  if (t === 'number' || ['pos', 'version', 'sort', 'lat', 'lon', 'hoehe', 'groesse'].includes(key)) {
     return v === '' || v == null || isNaN(Number(v)) ? null : Number(v)
   }
   if (t === 'rating') return Number(v) || 0

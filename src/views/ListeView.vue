@@ -62,6 +62,21 @@ function exp(fmt) {
   if (ohne) toast(`${ohne} Burg(en) ohne Koordinaten wurden ausgelassen.`, 4000)
 }
 
+const odtBusy = ref(false)
+async function odt() {
+  if (!exportListe.value.length) return toast('Keine Datensätze zum Exportieren.')
+  if (exportListe.value.length > 25 && !confirm(`${exportListe.value.length} Burgen in ein Dokument exportieren? Das kann etwas dauern.`)) return
+  odtBusy.value = true
+  try {
+    const { exportOdt } = await import('../utils/odt.js')
+    await exportOdt(exportListe.value, label)
+  } catch (e) {
+    alert('Dokument konnte nicht erstellt werden: ' + e.message)
+  } finally {
+    odtBusy.value = false
+  }
+}
+
 const pdfBusy = ref(false)
 async function pdf() {
   const list = exportListe.value
@@ -108,6 +123,7 @@ const ort = (b) => [b.gemeinde, label('REGION', b.region), label('LAND', b.land)
         Export: {{ auswahl.length ? `${exportListe.length} ausgewählte` : `alle ${exportListe.length} angezeigten` }}
       </span>
       <button class="btn small" :disabled="pdfBusy" @click="pdf">{{ pdfBusy ? 'PDF …' : 'PDF' }}</button>
+      <button class="btn small" :disabled="odtBusy" title="Textdokument für LibreOffice, Word & Co." @click="odt">{{ odtBusy ? 'ODT …' : 'ODT' }}</button>
       <button class="btn small" @click="exp('csv')">CSV</button>
       <button class="btn small" @click="exp('gpx')">GPX</button>
       <button class="btn small" @click="exp('geojson')">GeoJSON</button>

@@ -4,13 +4,13 @@
 //   └── Bilder/
 //       └── B-20261124-153012_Burg_Hohenzollern/  01.jpg … 04.jpg
 import { getToken, tokenVerwerfen, anmelden, hatGueltigesToken } from './auth.js'
-import { BURG_COLS, BILD_COLS, KAT_COLS, zuZeilen, ausZeilen } from './tabelle.js'
+import { BURG_COLS, BILD_COLS, KAT_COLS, DATEI_COLS, zuZeilen, ausZeilen } from './tabelle.js'
 
 const DRIVE = 'https://www.googleapis.com/drive/v3/files'
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files'
 const SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets'
 const FOLDER = 'application/vnd.google-apps.folder'
-const TABS = ['Burgen', 'Bilder', 'Katalog', 'Meta']
+const TABS = ['Burgen', 'Bilder', 'Katalog', 'Meta', 'Dateien']
 
 class ApiFehler extends Error {
   constructor(status, msg) {
@@ -181,6 +181,114 @@ export class DriveRemote {
     return JSON.parse(r.text).id
   }
 
+  // Große Dateien (Video, Audio …): fortsetzbarer Upload in Stücken.
+  // sitzung = Upload-Adresse eines früheren, abgebrochenen Versuchs – dann geht es dort weiter.
+  // onSitzung(url) merkt sich die Adresse, onProgress(geladen, gesamt) zeigt den Fortschritt.
+  async hochladenFortsetzbar(blob, name, parent, { sitzung, onSitzung, onProgress } = {}, erneut = true) {
+    const gesamt = blob.size
+    const typ = blob.type || 'application/octet-stream'
+    let url = sitzung
+    let start = 0
+    if (url) {
+      const r = await this.stueck(url, null, `bytes */${gesamt}`) // wie weit sind wir gekommen?
+      if (r.fertig) return r.id
+      if (r.weg) url = null
+      else start = r.weiter
+    }
+    if (!url) {
+      const t = await tokenHolen()
+      let r
+      try {
+        r = await fetch(`${UPLOAD}?uploadType=resumable&fields=id`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${t}`,
+            'Content-Type': 'application/json; charset=UTF-8',
+            'X-Upload-Content-Type': typ,
+            'X-Upload-Content-Length': String(gesamt),
+          },
+          body: JSON.stringify({ name, parents: [parent], mimeType: typ }),
+        })
+      } catch {
+        throw new NetzFehler('Keine Verbindung zu Google.')
+      }
+      if (r.status === 401 && erneut) {
+        await neuAnmelden()
+        return this.hochladenFortsetzbar(blob, name, parent, { onSitzung, onProgress }, false)
+      }
+      if (r.status >= 500 || r.status === 429) throw new NetzFehler(`Google ist gerade nicht erreichbar (${r.status}).`)
+      if (!r.ok) throw new ApiFehler(r.status, `Upload konnte nicht starten (${r.status}).`)
+      url = r.headers.get('Location')
+      if (!url) throw new ApiFehler(0, 'Google hat keine Upload-Adresse geliefert.')
+      onSitzung?.(url)
+    }
+    const STUECK = 4 * 1024 * 1024 // Vielfaches von 256 KB
+    while (start < gesamt) {
+      const ende = Math.min(start + STUECK, gesamt)
+      const basis = start
+      const r = await this.stueck(url, blob.slice(start, ende), `bytes ${start}-${ende - 1}/${gesamt}`, (l) => onProgress?.(basis + l, gesamt))
+      if (r.fertig) return r.id
+      if (r.weg) {
+        onSitzung?.('')
+        throw new NetzFehler('Upload-Sitzung abgelaufen – beginnt beim nächsten Versuch neu.')
+      }
+      start = r.weiter
+      onProgress?.(start, gesamt)
+    }
+    throw new ApiFehler(0, 'Upload unvollständig.')
+  }
+
+  // Ein Stück senden (ohne Inhalt: nur den Stand abfragen)
+  async stueck(url, teil, bereich, onProgress) {
+    const token = await tokenHolen()
+    const r = await new Promise((res, rej) => {
+      const x = new XMLHttpRequest()
+      let stau
+      const warte = () => {
+        clearTimeout(stau)
+        stau = setTimeout(() => x.abort(), 45000)
+      }
+      x.open('PUT', url)
+      x.setRequestHeader('Authorization', `Bearer ${token}`)
+      x.setRequestHeader('Content-Range', bereich)
+      x.upload.onprogress = (e) => {
+        warte()
+        onProgress?.(e.loaded)
+      }
+      x.onload = () => {
+        clearTimeout(stau)
+        res({ status: x.status, text: x.responseText, range: x.getResponseHeader('Range') })
+      }
+      x.onerror = () => {
+        clearTimeout(stau)
+        rej(new NetzFehler('Verbindung beim Hochladen abgebrochen.'))
+      }
+      x.onabort = () => rej(new NetzFehler('Hochladen abgebrochen – das Netz ist zu langsam.'))
+      warte()
+      x.send(teil || null)
+    })
+    if (r.status === 200 || r.status === 201) return { fertig: true, id: JSON.parse(r.text).id }
+    if (r.status === 308) {
+      const m = /bytes=0-(\d+)/.exec(r.range || '')
+      return { weiter: m ? Number(m[1]) + 1 : 0 }
+    }
+    if (r.status === 404 || r.status === 410) return { weg: true }
+    if (r.status === 0 || r.status >= 500 || r.status === 429) throw new NetzFehler(`Hochladen unterbrochen (${r.status || 'keine Antwort'}).`)
+    throw new ApiFehler(r.status, `Google meldet beim Hochladen (${r.status}).`)
+  }
+
+  // Unterordner "Dateien" im Ordner einer Burg
+  async dateienOrdner(burgOrdnerId) {
+    const cache = JSON.parse(localStorage.getItem('google.dateienOrdner') || '{}')
+    if (cache[burgOrdnerId]) return cache[burgOrdnerId]
+    const q = `'${burgOrdnerId}' in parents and appProperties has { key='burgenApp' and value='dateien' } and trashed=false`
+    const r = await json(`${DRIVE}?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=1`)
+    const id = r.files[0]?.id || (await this.ordnerAnlegen('Dateien', burgOrdnerId, { burgenApp: 'dateien' })).id
+    cache[burgOrdnerId] = id
+    localStorage.setItem('google.dateienOrdner', JSON.stringify(cache))
+    return id
+  }
+
   async herunterladen(id) {
     return (await api(`${DRIVE}/${id}?alt=media`)).blob()
   }
@@ -202,7 +310,7 @@ export class DriveRemote {
         return false
       }
     }
-    if ((await ok(this.ids.root)) && (await ok(this.ids.sheet)) && (await ok(this.ids.bilder))) return
+    if ((await ok(this.ids.root)) && (await ok(this.ids.sheet)) && (await ok(this.ids.bilder))) return this.tabsSicherstellen()
 
     let root = await this.suche('root')
     if (!root) root = await this.ordnerAnlegen('Burgen-Erfassung', null, { burgenApp: 'root' })
@@ -213,6 +321,22 @@ export class DriveRemote {
 
     this.ids = { root: root.id, bilder: bilder.id, sheet: sheet.id }
     localStorage.setItem('google.ids', JSON.stringify(this.ids))
+    this.tabsOk = false
+    await this.tabsSicherstellen()
+  }
+
+  // Ältere Tabellen um neue Blätter ergänzen (z. B. "Dateien")
+  async tabsSicherstellen() {
+    if (this.tabsOk) return
+    const info = await json(`${SHEETS}/${this.ids.sheet}?fields=sheets.properties.title`)
+    const da = new Set(info.sheets.map((s) => s.properties.title))
+    const fehlt = TABS.filter((t) => !da.has(t))
+    if (fehlt.length) {
+      await api(`${SHEETS}/${this.ids.sheet}:batchUpdate`, jsonBody('POST', {
+        requests: fehlt.map((title) => ({ addSheet: { properties: { title, gridProperties: { frozenRowCount: 1 } } } })),
+      }))
+    }
+    this.tabsOk = true
   }
 
   async tabelleAnlegen(parent) {
@@ -242,8 +366,9 @@ export class DriveRemote {
   async laden() {
     const q = TABS.map((t) => `ranges=${encodeURIComponent(t)}`).join('&')
     const r = await json(`${SHEETS}/${this.ids.sheet}/values:batchGet?${q}&valueRenderOption=UNFORMATTED_VALUE`)
-    const [burgen, bilder, katalog, meta] = r.valueRanges.map((v) => v.values || [])
+    const [burgen, bilder, katalog, meta, dateien] = r.valueRanges.map((v) => v.values || [])
     return {
+      dateien: ausZeilen(dateien),
       burgen: ausZeilen(burgen),
       bilder: ausZeilen(bilder),
       katalog: ausZeilen(katalog),
@@ -251,8 +376,9 @@ export class DriveRemote {
     }
   }
 
-  async speichern({ burgen, bilder, katalog, meta }) {
+  async speichern({ burgen, bilder, katalog, meta, dateien = [] }) {
     const daten = {
+      Dateien: zuZeilen(DATEI_COLS, dateien),
       Burgen: zuZeilen(BURG_COLS, burgen),
       Bilder: zuZeilen(BILD_COLS, bilder),
       Katalog: zuZeilen(KAT_COLS, katalog),

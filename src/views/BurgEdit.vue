@@ -13,6 +13,7 @@ import MapPicker from '../components/MapPicker.vue'
 import BilderEditor from '../components/BilderEditor.vue'
 import FeldEingabe from '../components/FeldEingabe.vue'
 import CloudChip from '../components/CloudChip.vue'
+import DateienEditor from '../components/DateienEditor.vue'
 import { useQgisExport } from '../composables/useQgisExport.js'
 
 const route = useRoute()
@@ -131,6 +132,20 @@ function qgis() {
   qgisExport([burg.value], label)
 }
 
+const odtBusy = ref(false)
+async function odt() {
+  if (dirty.value || istNeu.value) return toast('Bitte zuerst speichern – exportiert wird der gespeicherte Stand.')
+  odtBusy.value = true
+  try {
+    const { exportOdt } = await import('../utils/odt.js')
+    await exportOdt([burg.value], label)
+  } catch (e) {
+    alert('Dokument konnte nicht erstellt werden: ' + e.message)
+  } finally {
+    odtBusy.value = false
+  }
+}
+
 const pdfBusy = ref(false)
 async function pdf() {
   pdfBusy.value = true
@@ -197,10 +212,17 @@ const zeit = (iso) => (iso ? new Date(iso).toLocaleString('de-DE') : '–')
       </section>
 
       <!-- Bilder -->
-      <section v-else-if="s.special === 'bilder'" class="card">
+      <template v-else-if="s.special === 'bilder'">
+      <section class="card">
         <h2>{{ s.title }}</h2>
         <BilderEditor v-model="bilder" @busy="bildBusy = $event" @gps="fotoGps" />
       </section>
+      <section class="card">
+        <h2>Dateien <small>Notizen, Sprachaufnahmen, Videos, Dokumente</small></h2>
+        <DateienEditor v-if="!istNeu" :burg-id="burg.id" />
+        <p v-else class="hint">Bitte die Burg zuerst speichern, dann können Dateien abgelegt werden.</p>
+      </section>
+      </template>
 
       <!-- normale Feldgruppen -->
       <section v-else class="card">
@@ -223,6 +245,7 @@ const zeit = (iso) => (iso ? new Date(iso).toLocaleString('de-DE') : '–')
       <h2>Export &amp; Verwaltung</h2>
       <div class="row">
         <button class="btn primary" :disabled="pdfBusy" @click="pdf">📄 {{ pdfBusy ? 'PDF wird erstellt …' : 'PDF-Datenblatt' }}</button>
+        <button class="btn" :disabled="odtBusy" title="Textdokument für LibreOffice, Word & Co. (bearbeitbar)" @click="odt">📝 {{ odtBusy ? 'Dokument wird erstellt …' : 'Textdokument (ODT)' }}</button>
         <button class="btn" @click="exp('gpx')">GPX</button>
         <button class="btn" @click="exp('csv')">CSV</button>
         <button class="btn" @click="exp('geojson')">GeoJSON</button>

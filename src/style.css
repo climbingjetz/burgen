@@ -298,3 +298,51 @@ input[readonly] { background: #f5f1ec; color: var(--muted); }
   .kompakt-opt:empty { display: none; }
 }
 h3 { font-size: 0.95rem; margin: 1.25rem 0 0.5rem; }
+
+/* ---------- Zusatzdateien ---------- */
+.datei-liste { list-style: none; padding: 0; margin: 0 0 0.75rem; }
+.datei-liste li { display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.datei-ico { font-size: 1.4rem; width: 2rem; text-align: center; }
+.datei-name { flex: 1 1 12rem; min-width: 0; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; display: flex; flex-direction: column; color: var(--text); font: inherit; }
+.datei-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
+.datei-name:disabled { cursor: default; }
+.datei-name:disabled strong { color: var(--muted); }
+.datei-status { font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; white-space: nowrap; background: #eee; }
+.datei-status.ok { background: #e6f2e7; color: var(--ok); }
+.datei-status.offen { background: #fbefdc; color: var(--warn); }
+.datei-status.laeuft { background: #e3eef8; color: #1d6fa5; }
+.datei-tools { display: flex; gap: 0.25rem; }
+.datei-tools button { border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: 0.3rem 0.55rem; cursor: pointer; }
+.notiz-neu textarea { width: 100%; margin-bottom: 0.5rem; }
+.datei-add .btn { cursor: pointer; }
+
+/* ---------- Datenpflege ---------- */
+.kacheln-stat { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem; margin-bottom: 0.75rem; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 0.75rem 1rem; display: flex; flex-direction: column; }
+.stat strong { font-size: 1.6rem; color: var(--accent); line-height: 1.1; }
+.stat span { font-weight: 600; }
+.stat small { color: var(--muted); font-size: 0.78rem; }
+.status-balken { display: flex; gap: 3px; margin-bottom: 1rem; }
+.status-balken .status { text-align: center; border-radius: 6px; padding: 4px 6px; overflow: hidden; text-overflow: ellipsis; }
+.sicherung-ziel { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.5rem; }
+.sicherung-ziel span { flex: 1 1 14rem; }
+.sicherung-plan { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin: 0.75rem 0; font-size: 0.9rem; }
+.sicherung-plan > div { background: #f5f1ec; border-radius: 8px; padding: 0.6rem 0.75rem; }
+.card.warnung { background: #fbefdc; border-color: #ecd3a8; color: #6b4300; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.generationen { list-style: none; padding: 0; margin: 0.25rem 0 0.75rem; }
+.generationen li { display: flex; align-items: center; gap: 0.6rem; padding: 0.35rem 0; border-bottom: 1px solid var(--line); }
+.gen-nr { width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-size: 0.8rem; font-weight: 700; flex: none; }
+.gen-name { flex: 1; min-width: 0; }
+.pruefungen { list-style: none; padding: 0; margin: 0; }
+.pruefungen > li { border-bottom: 1px solid var(--line); }
+.pruef-kopf { width: 100%; display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 0.25rem; background: none; border: 0; font: inherit; color: var(--text); cursor: pointer; text-align: left; }
+.pruef-kopf:disabled { cursor: default; color: var(--muted); }
+.pruef-titel { flex: 1; }
+.pruef-zahl { min-width: 2rem; text-align: center; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #fbefdc; color: var(--warn); }
+.pruefungen li.ok .pruef-zahl { background: #e6f2e7; color: var(--ok); }
+.pruef-liste { padding: 0 0 0.75rem 2.2rem; display: flex; flex-direction: column; gap: 0.3rem; align-items: flex-start; }
+.pruef-eintrag { text-decoration: none; }
+.dublette { display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: baseline; }
+@media (max-width: 760px) {
+  .sicherung-plan { grid-template-columns: 1fr; }
+}

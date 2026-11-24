@@ -24,7 +24,7 @@ async function loadPdfMake() {
 // ---------- Bild-Hilfen ----------
 
 // Schneidet ein Bild auf das gewünschte Seitenverhältnis zu (wie CSS object-fit: cover)
-async function coverDataUrl(blob, ratio, maxW = 1400) {
+export async function coverDataUrl(blob, ratio, maxW = 1400) {
   const img = await createImageBitmap(blob)
   let sw = img.width, sh = img.height, sx = 0, sy = 0
   if (sw / sh > ratio) { sw = sh * ratio; sx = (img.width - sw) / 2 } else { sh = sw / ratio; sy = (img.height - sh) / 2 }
@@ -38,7 +38,7 @@ async function coverDataUrl(blob, ratio, maxW = 1400) {
 }
 
 // Statischer Kartenausschnitt aus OpenStreetMap-Kacheln mit Markierung
-async function karteDataUrl(lat, lon, zoom = 15, w = 600, h = 400) {
+export async function karteDataUrl(lat, lon, zoom = 15, w = 600, h = 400) {
   const n = 2 ** zoom
   const xf = ((lon + 180) / 360) * n
   const yf = ((1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2) * n
@@ -76,7 +76,7 @@ async function karteDataUrl(lat, lon, zoom = 15, w = 600, h = 400) {
 
 // ---------- Text-Hilfen ----------
 
-function dms(v, pos, neg) {
+export function dms(v, pos, neg) {
   const a = Math.abs(v)
   const d = Math.floor(a)
   const m = Math.floor((a - d) * 60)
@@ -90,7 +90,7 @@ const deDatum = (iso) => {
   return isNaN(d) ? iso : d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
-function wert(f, b, label) {
+export function wert(f, b, label) {
   const v = b[f.key]
   if (v == null || v === '' || (Array.isArray(v) && !v.length)) return ''
   switch (f.type) {
