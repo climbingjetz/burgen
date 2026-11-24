@@ -3,6 +3,9 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { syncState, synchronisiere, zaehleOffen, driveRemote, cloud, netzInfo, netzRegel, setNetzRegel, NETZ_REGELN, bilderErlaubt } from '../sync.js'
 import CloudChip from '../components/CloudChip.vue'
 import { mb as mbText } from '../utils/format.js'
+import { useQgisExport } from '../composables/useQgisExport.js'
+const { qgisText, qgisExport } = useQgisExport()
+const qgisAlle = async () => qgisExport(await listBurgen(), label)
 import { getClientId, setClientId, istVerbunden, hatGueltigesToken, anmelden, abmelden, ladeGoogle } from '../google/auth.js'
 import { exportBackup, importBackup, listBurgen } from '../store.js'
 import { download, exportiere, today } from '../utils/export.js'
@@ -163,7 +166,12 @@ function trennen() {
         <button class="btn" @click="exportAlle('csv')">CSV</button>
         <button class="btn" @click="exportAlle('gpx')">GPX</button>
         <button class="btn" @click="exportAlle('geojson')">GeoJSON</button>
+        <button class="btn primary" :disabled="!!qgisText" @click="qgisAlle">{{ qgisText ? '⏳ ' + qgisText : '🗺 QGIS-Paket (ZIP)' }}</button>
       </div>
+      <p class="hint">
+        <strong>QGIS-Paket:</strong> ZIP entpacken (wohin, ist egal) und <code>Burgen.qgz</code> doppelklicken –
+        oder <code>Burgen.gpkg</code> in QGIS ziehen. Beschriftung, Formular, Auswahllisten und Bilder sind schon eingerichtet.
+      </p>
       <p class="hint">
         <strong>QGIS:</strong> GeoJSON einfach ins Kartenfenster ziehen. CSV über
         <em>Layer → Layer hinzufügen → Getrennte Texte</em>, X-Feld <code>lon</code>, Y-Feld <code>lat</code>, KBS EPSG:4326.

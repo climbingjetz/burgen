@@ -32,6 +32,7 @@ Dann im Browser http://localhost:5173 öffnen.
 - [x] 1–4 Bilder je Burg, automatische Verkleinerung, GPS aus Foto-EXIF
 - [x] Karte (Straße / Topo / Luftbild), Position per Klick setzen
 - [x] Export CSV / GPX / GeoJSON (alle, Auswahl, einzeln), Datensicherung
+- [x] QGIS-Paket (ZIP): GeoPackage mit eingebautem Stil (Beschriftung, Formular, Auswahllisten, Bilder) + Projekt – `src/utils/geopackage.js`, `src/utils/qgisStil.js`
 - [x] PDF-Datenblatt (einzeln aus dem Formular, mehrere aus der Liste) – `src/utils/pdf.js`
 - [x] Google Sheets / Drive-Abgleich – Einrichtung siehe [GOOGLE-EINRICHTUNG.md](GOOGLE-EINRICHTUNG.md)
 - [x] Konfigurierbarer Kompaktmodus (Feld → ⚙ Felder), wird über Drive abgeglichen

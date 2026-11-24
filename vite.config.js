@@ -6,6 +6,7 @@ export default defineConfig({
   base: './',
   plugins: [
     vue(),
+
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
@@ -21,7 +22,7 @@ export default defineConfig({
         icons: [{ src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,wasm}'],
         runtimeCaching: [
           {
             // Kartenkacheln für die Arbeit im Feld zwischenspeichern

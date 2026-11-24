@@ -13,6 +13,7 @@ import MapPicker from '../components/MapPicker.vue'
 import BilderEditor from '../components/BilderEditor.vue'
 import FeldEingabe from '../components/FeldEingabe.vue'
 import CloudChip from '../components/CloudChip.vue'
+import { useQgisExport } from '../composables/useQgisExport.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -124,6 +125,12 @@ function exp(fmt) {
   if (ohne) toast('Diese Burg hat noch keine Koordinaten.')
 }
 
+const { qgisText, qgisExport } = useQgisExport()
+function qgis() {
+  if (dirty.value || istNeu.value) return toast('Bitte zuerst speichern – exportiert wird der gespeicherte Stand.')
+  qgisExport([burg.value], label)
+}
+
 const pdfBusy = ref(false)
 async function pdf() {
   pdfBusy.value = true
@@ -219,6 +226,7 @@ const zeit = (iso) => (iso ? new Date(iso).toLocaleString('de-DE') : '–')
         <button class="btn" @click="exp('gpx')">GPX</button>
         <button class="btn" @click="exp('csv')">CSV</button>
         <button class="btn" @click="exp('geojson')">GeoJSON</button>
+        <button class="btn" :disabled="!!qgisText" title="GeoPackage mit Bildern und fertigem QGIS-Stil als ZIP" @click="qgis">{{ qgisText ? '⏳ ' + qgisText : '🗺 QGIS (ZIP)' }}</button>
         <span class="spacer"></span>
         <button v-if="!istNeu" class="btn danger" @click="loeschen">🗑 Löschen</button>
       </div>

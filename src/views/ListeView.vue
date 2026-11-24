@@ -8,6 +8,8 @@ import { toast } from '../composables/toast.js'
 import KatSelect from '../components/KatSelect.vue'
 import CloudChip from '../components/CloudChip.vue'
 import { syncState } from '../sync.js'
+import { useQgisExport } from '../composables/useQgisExport.js'
+const { qgisText, qgisExport } = useQgisExport()
 
 const { label } = useKatalog()
 const burgen = ref([])
@@ -109,6 +111,7 @@ const ort = (b) => [b.gemeinde, label('REGION', b.region), label('LAND', b.land)
       <button class="btn small" @click="exp('csv')">CSV</button>
       <button class="btn small" @click="exp('gpx')">GPX</button>
       <button class="btn small" @click="exp('geojson')">GeoJSON</button>
+      <button class="btn small" :disabled="!!qgisText" title="GeoPackage mit Bildern und fertigem QGIS-Stil als ZIP" @click="qgisExport(exportListe, label)">{{ qgisText ? '⏳ ' + qgisText : '🗺 QGIS (ZIP)' }}</button>
     </div>
 
     <p v-if="geladen && !burgen.length" class="leer card">
