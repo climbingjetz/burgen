@@ -10,6 +10,7 @@ import GpsButton from '../components/GpsButton.vue'
 import BilderEditor from '../components/BilderEditor.vue'
 import MapPicker from '../components/MapPicker.vue'
 import FeldEingabe from '../components/FeldEingabe.vue'
+import CloudChip from '../components/CloudChip.vue'
 
 const eintraege = computed(() => kompakt.felder.map((e) => ({ ...e, def: feldDef(e.key) })).filter((e) => e.def))
 const hatGps = computed(() => kompakt.felder.some((e) => e.key === '_gps'))
@@ -26,6 +27,7 @@ const bilder = ref([])
 const runde = ref(0) // erzwingt neuen GPS-Start nach dem Speichern
 const zuletzt = ref(null)
 const speichert = ref(false)
+const bildBusy = ref(false)
 
 function gps(p) {
   Object.assign(form.value, { lat: p.lat, lon: p.lon, hoehe: p.hoehe, genauigkeit: p.genauigkeit, koordQuelle: 'gps', gpsZeit: p.zeit })
@@ -38,6 +40,7 @@ function fotoGps(b) {
 }
 
 async function speichern() {
+  if (bildBusy.value) return toast('Bitte warten – das Foto wird noch verarbeitet.')
   if (hatGps.value && form.value.lat == null && !confirm('Es wurde noch keine Position übernommen. Trotzdem speichern?')) return
   speichert.value = true
   try {
@@ -57,8 +60,8 @@ async function speichern() {
     bilder.value = []
     runde.value++
     window.scrollTo({ top: 0, behavior: 'smooth' })
-    toast('Gespeichert ✓')
-    autoSync()
+    toast('Auf dem Gerät gespeichert ✓')
+    autoSync() // läuft im Hintergrund – Fortschritt in der Statusleiste
   } finally {
     speichert.value = false
   }
@@ -72,10 +75,11 @@ async function speichern() {
       <router-link to="/feld/einstellungen" class="btn small" title="Kompaktmodus einrichten">⚙ Felder</router-link>
     </div>
 
-    <p v-if="zuletzt" class="card erfolg">
-      ✓ „{{ zuletzt.name }}“ gespeichert.
+    <div v-if="zuletzt" class="card erfolg">
+      ✓ „{{ zuletzt.name }}“ ist auf dem Gerät gespeichert.
       <router-link :to="`/burg/${zuletzt.id}`">Weiter bearbeiten →</router-link>
-    </p>
+      <div class="cloud-hinweis"><CloudChip :id="zuletzt.id" /></div>
+    </div>
 
     <p v-if="!eintraege.length" class="card leer">
       Im Kompaktmodus sind keine Felder ausgewählt.
@@ -96,7 +100,7 @@ async function speichern() {
 
       <section v-else-if="e.key === '_fotos'" class="card">
         <h2>Fotos</h2>
-        <BilderEditor v-model="bilder" big @gps="fotoGps" />
+        <BilderEditor v-model="bilder" big @busy="bildBusy = $event" @gps="fotoGps" />
       </section>
 
       <section v-else class="card">
@@ -108,7 +112,9 @@ async function speichern() {
     <p v-if="!hatGps" class="hint">Hinweis: Die Position ist im Kompaktmodus ausgeblendet.</p>
 
     <div class="feld-save">
-      <button class="btn primary big" :disabled="speichert" @click="speichern">💾 Speichern &amp; nächste Burg</button>
+      <button class="btn primary big" :disabled="speichert || bildBusy" @click="speichern">
+        {{ bildBusy ? '⏳ Foto wird verarbeitet …' : speichert ? '⏳ Speichert …' : '💾 Speichern & nächste Burg' }}
+      </button>
     </div>
   </div>
 </template>

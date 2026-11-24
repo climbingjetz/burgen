@@ -118,7 +118,7 @@ const OHNE = ['name', 'altNamen', 'status']
 // ---------- Aufbau einer Burg ----------
 
 async function burgInhalt(b, label, { mitKarte, bilder: vorgabe }) {
-  const bilder = vorgabe?.[b.id] ?? (await getBilder(b.id))
+  const bilder = (vorgabe?.[b.id] ?? (await getBilder(b.id))).filter((x) => x.blob)
   const out = []
 
   // Kopf

@@ -12,6 +12,7 @@ import GpsButton from '../components/GpsButton.vue'
 import MapPicker from '../components/MapPicker.vue'
 import BilderEditor from '../components/BilderEditor.vue'
 import FeldEingabe from '../components/FeldEingabe.vue'
+import CloudChip from '../components/CloudChip.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,6 +23,8 @@ const bilder = ref([])
 const istNeu = ref(false)
 const dirty = ref(false)
 const fehler = ref('')
+const bildBusy = ref(false)
+const speichert = ref(false)
 let bereit = false
 
 async function load() {
@@ -65,10 +68,19 @@ async function speichern() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
     return
   }
-  const rec = await saveBurg(burg.value, bilder.value)
+  if (bildBusy.value) return toast('Bitte warten – das Foto wird noch verarbeitet.')
+  speichert.value = true
+  let rec
+  try {
+    rec = await saveBurg(burg.value, bilder.value)
+  } catch (e) {
+    speichert.value = false
+    return alert('Speichern fehlgeschlagen: ' + e.message)
+  }
+  speichert.value = false
   dirty.value = false
-  toast('Gespeichert ✓')
-  autoSync()
+  toast('Auf dem Gerät gespeichert ✓')
+  autoSync() // läuft im Hintergrund weiter – Fortschritt in der Statusleiste
   if (istNeu.value) router.replace(`/burg/${rec.id}`)
   else await load()
 }
@@ -133,8 +145,12 @@ const zeit = (iso) => (iso ? new Date(iso).toLocaleString('de-DE') : '–')
     <div class="page-head sticky">
       <router-link to="/" class="btn small">← Liste</router-link>
       <h1 class="ellipsis">{{ istNeu ? 'Neue Burg' : burg.name || burg.id }}</h1>
-      <button class="btn primary" :disabled="!dirty && !istNeu" @click="speichern">💾 Speichern</button>
+      <button v-if="dirty || istNeu" class="btn primary" :disabled="bildBusy || speichert" @click="speichern">
+        {{ bildBusy ? '⏳ Foto …' : speichert ? '⏳ Speichert …' : '💾 Speichern' }}
+      </button>
+      <button v-else class="btn gespeichert" disabled title="Alle Änderungen sind auf diesem Gerät gespeichert">✓ Gespeichert</button>
     </div>
+    <p v-if="!istNeu" class="cloud-hinweis"><CloudChip :id="burg.id" /></p>
 
     <p v-if="fehler" class="fehler card">{{ fehler }}</p>
 
@@ -176,7 +192,7 @@ const zeit = (iso) => (iso ? new Date(iso).toLocaleString('de-DE') : '–')
       <!-- Bilder -->
       <section v-else-if="s.special === 'bilder'" class="card">
         <h2>{{ s.title }}</h2>
-        <BilderEditor v-model="bilder" @gps="fotoGps" />
+        <BilderEditor v-model="bilder" @busy="bildBusy = $event" @gps="fotoGps" />
       </section>
 
       <!-- normale Feldgruppen -->

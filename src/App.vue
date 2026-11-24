@@ -1,10 +1,15 @@
 <script setup>
 import { onMounted } from 'vue'
 import { toastText } from './composables/toast.js'
-import { syncState, autoSync } from './sync.js'
+import { syncState, autoSync, starteAutomatik } from './sync.js'
+import SyncLeiste from './components/SyncLeiste.vue'
 
-// Beim Start: offene Änderungen zählen und – falls noch angemeldet – abgleichen
-onMounted(autoSync)
+// Beim Start: offene Änderungen zählen, – falls noch angemeldet – abgleichen
+// und bei besserem Netz / Rückkehr in die App automatisch weitermachen
+onMounted(() => {
+  autoSync()
+  starteAutomatik()
+})
 </script>
 
 <template>
@@ -17,10 +22,11 @@ onMounted(autoSync)
       <router-link to="/kataloge"><span class="ico">🗂️</span><span>Kataloge</span></router-link>
       <router-link to="/daten" class="nav-daten">
         <span class="ico">{{ syncState.laeuft ? '🔄' : '💾' }}</span><span>Daten</span>
-        <span v-if="syncState.offen && !syncState.laeuft" class="nav-badge" :title="`${syncState.offen} Änderung(en) noch nicht in Google Drive`">{{ syncState.offen }}</span>
+        <span v-if="syncState.offen && !syncState.laeuft" class="nav-badge" :title="`${syncState.offen} Änderung(en) / Bild(er) noch nicht in Google Drive`">{{ syncState.offen }}</span>
       </router-link>
     </nav>
   </header>
+  <SyncLeiste />
   <main>
     <router-view />
   </main>

@@ -1,18 +1,21 @@
 <script setup>
-import { ref, onBeforeUnmount } from 'vue'
+import { ref, watch, onBeforeUnmount } from 'vue'
 import { processImage } from '../utils/image.js'
+import { syncState } from '../sync.js'
 
 const props = defineProps({
   modelValue: { type: Array, default: () => [] },
   max: { type: Number, default: 4 },
   big: Boolean, // Feldmodus: große Buttons, keine Bildunterschrift
 })
-const emit = defineEmits(['update:modelValue', 'gps'])
+const emit = defineEmits(['update:modelValue', 'gps', 'busy'])
 const busy = ref(false)
+watch(busy, (v) => emit('busy', v))
 const fehler = ref('')
 
 const urls = new Map()
 function url(b) {
+  if (!b.blob) return '' // liegt nur in Drive, wird noch geladen
   if (!urls.has(b.blob)) urls.set(b.blob, URL.createObjectURL(b.blob))
   return urls.get(b.blob)
 }
@@ -61,9 +64,11 @@ function caption(i, v) {
 <template>
   <div class="bilder">
     <div v-if="modelValue.length" class="bild-grid">
-      <figure v-for="(b, i) in modelValue" :key="url(b)" class="bild">
+      <figure v-for="(b, i) in modelValue" :key="b.id || url(b)" class="bild">
         <div class="bild-img">
-          <img :src="url(b)" alt="" />
+          <img v-if="b.blob" :src="url(b)" alt="" />
+          <div v-else class="bild-platzhalter">☁ liegt in der Cloud,<br />wird noch geladen</div>
+          <span v-if="syncState.verbunden && b.blob" class="bild-wolke" :title="b.driveId ? 'In der Cloud' : 'Noch nicht hochgeladen'">{{ b.driveId ? '☁' : '⏳' }}</span>
           <span v-if="i === 0" class="badge">Hauptbild</span>
           <span v-if="b.lat != null" class="badge gps-badge" title="Foto enthält GPS-Daten">GPS</span>
         </div>
@@ -87,7 +92,7 @@ function caption(i, v) {
       </label>
       <span class="hint">{{ modelValue.length }} / {{ max }}</span>
     </div>
-    <p v-if="busy" class="hint pulse">Bild wird verarbeitet …</p>
+    <p v-if="busy" class="hint pulse">⏳ Bild wird verarbeitet …</p>
     <p v-if="fehler" class="fehler">{{ fehler }}</p>
   </div>
 </template>

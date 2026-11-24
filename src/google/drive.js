@@ -3,7 +3,7 @@
 //   ├── Burgen-DB        (Google Sheet: Burgen, Bilder, Katalog, Meta)
 //   └── Bilder/
 //       └── B-20261124-153012_Burg_Hohenzollern/  01.jpg … 04.jpg
-import { getToken, tokenVerwerfen, anmelden } from './auth.js'
+import { getToken, tokenVerwerfen, anmelden, hatGueltigesToken } from './auth.js'
 import { BURG_COLS, BILD_COLS, KAT_COLS, zuZeilen, ausZeilen } from './tabelle.js'
 
 const DRIVE = 'https://www.googleapis.com/drive/v3/files'
@@ -19,12 +19,53 @@ class ApiFehler extends Error {
   }
 }
 
+// Wird ausgelöst, wenn im Hintergrund eine neue Google-Anmeldung nötig wäre (Popup geht nur nach einem Klick)
+export class AnmeldungNoetig extends Error {
+  constructor() {
+    super('Die Google-Anmeldung ist abgelaufen.')
+    this.anmeldung = true
+  }
+}
+
+// Netzfehler / Zeitüberschreitung – später erneut versuchen
+export class NetzFehler extends Error {
+  constructor(msg = 'Keine oder zu schwache Netzverbindung.') {
+    super(msg)
+    this.netz = true
+  }
+}
+
+// interaktiv = false: kein Anmelde-Popup öffnen (automatischer Abgleich im Hintergrund)
+let interaktiv = true
+export const setInteraktiv = (v) => (interaktiv = v)
+
+async function tokenHolen() {
+  if (!interaktiv && !hatGueltigesToken()) throw new AnmeldungNoetig()
+  return getToken()
+}
+
+async function neuAnmelden() {
+  tokenVerwerfen()
+  if (!interaktiv) throw new AnmeldungNoetig()
+  await anmelden()
+}
+
+const ZEITLIMIT = 60000 // ms für normale Anfragen
+
 async function api(url, opts = {}, erneut = true) {
-  const t = await getToken()
-  const r = await fetch(url, { ...opts, headers: { Authorization: `Bearer ${t}`, ...(opts.headers || {}) } })
+  const t = await tokenHolen()
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), ZEITLIMIT)
+  let r
+  try {
+    r = await fetch(url, { ...opts, signal: ctrl.signal, headers: { Authorization: `Bearer ${t}`, ...(opts.headers || {}) } })
+  } catch (e) {
+    throw new NetzFehler(e.name === 'AbortError' ? 'Zeitüberschreitung – das Netz ist zu langsam.' : 'Keine Verbindung zu Google.')
+  } finally {
+    clearTimeout(timer)
+  }
   if (r.status === 401 && erneut) {
-    tokenVerwerfen()
-    await anmelden()
+    await neuAnmelden()
     return api(url, opts, false)
   }
   if (!r.ok) {
@@ -34,9 +75,40 @@ async function api(url, opts = {}, erneut = true) {
     } catch {
       /* kein JSON */
     }
+    if (r.status >= 500 || r.status === 429) throw new NetzFehler(`Google ist gerade nicht erreichbar (${r.status}).`)
     throw new ApiFehler(r.status, `Google meldet (${r.status}): ${msg}`)
   }
   return r
+}
+
+// Upload mit Fortschrittsanzeige. Bricht ab, wenn 45 s lang nichts mehr übertragen wird.
+function xhrUpload(url, body, contentType, token, onProgress) {
+  return new Promise((res, rej) => {
+    const x = new XMLHttpRequest()
+    let stau
+    const warte = () => {
+      clearTimeout(stau)
+      stau = setTimeout(() => x.abort(), 45000)
+    }
+    x.open('POST', url)
+    x.setRequestHeader('Authorization', `Bearer ${token}`)
+    x.setRequestHeader('Content-Type', contentType)
+    x.upload.onprogress = (e) => {
+      warte()
+      if (e.lengthComputable) onProgress?.(e.loaded, e.total)
+    }
+    x.onload = () => {
+      clearTimeout(stau)
+      res({ status: x.status, text: x.responseText })
+    }
+    x.onerror = () => {
+      clearTimeout(stau)
+      rej(new NetzFehler('Verbindung beim Hochladen abgebrochen.'))
+    }
+    x.onabort = () => rej(new NetzFehler('Hochladen abgebrochen – das Netz ist zu langsam.'))
+    warte()
+    x.send(body)
+  })
 }
 
 const json = async (url, opts) => (await api(url, opts)).json()
@@ -52,6 +124,11 @@ function spalte(n) {
 export class DriveRemote {
   constructor() {
     this.ids = JSON.parse(localStorage.getItem('google.ids') || '{}')
+  }
+
+  // false = automatischer Abgleich im Hintergrund, keine Anmelde-Popups
+  interaktiv(v) {
+    setInteraktiv(v)
   }
 
   // ---------- Grundfunktionen ----------
@@ -78,17 +155,30 @@ export class DriveRemote {
     }
   }
 
-  async hochladen(blob, name, parent) {
+  async hochladen(blob, name, parent, onProgress, erneut = true) {
     const grenze = 'burgen' + Math.random().toString(36).slice(2)
     const meta = { name, parents: [parent], mimeType: blob.type || 'image/jpeg' }
     const body = new Blob([
       `--${grenze}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n`,
       `--${grenze}\r\nContent-Type: ${meta.mimeType}\r\n\r\n`, blob, `\r\n--${grenze}--`,
     ])
-    const r = await json(`${UPLOAD}?uploadType=multipart&fields=id`, {
-      method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${grenze}` }, body,
-    })
-    return r.id
+    const token = await tokenHolen()
+    const r = await xhrUpload(`${UPLOAD}?uploadType=multipart&fields=id`, body, `multipart/related; boundary=${grenze}`, token, onProgress)
+    if (r.status === 401 && erneut) {
+      await neuAnmelden()
+      return this.hochladen(blob, name, parent, onProgress, false)
+    }
+    if (r.status === 0 || r.status >= 500 || r.status === 429) throw new NetzFehler(`Hochladen fehlgeschlagen (${r.status || 'keine Antwort'}).`)
+    if (r.status < 200 || r.status >= 300) {
+      let msg = ''
+      try {
+        msg = JSON.parse(r.text).error?.message || ''
+      } catch {
+        /* kein JSON */
+      }
+      throw new ApiFehler(r.status, `Google meldet (${r.status}): ${msg}`)
+    }
+    return JSON.parse(r.text).id
   }
 
   async herunterladen(id) {

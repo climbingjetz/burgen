@@ -35,7 +35,8 @@ export async function getBilder(burgId) {
   return list.sort((a, b) => a.pos - b.pos)
 }
 
-export const getHauptbilder = () => db.bilder.filter((b) => b.pos === 1).toArray()
+// Hauptbilder für die Liste (Bilder, die noch aus Drive geladen werden, haben noch keinen blob)
+export const getHauptbilder = () => db.bilder.filter((b) => b.pos === 1 && !!b.blob).toArray()
 
 export async function saveBurg(burg, bilder = []) {
   const now = new Date().toISOString()
@@ -61,6 +62,17 @@ export async function saveBurg(burg, bilder = []) {
   }))
 
   await db.transaction('rw', db.burgen, db.bilder, async () => {
+    // Läuft gerade ein Upload, kann ein Bild inzwischen eine driveId bekommen haben – nicht verlieren
+    const vorher = new Map((await db.bilder.where('burgId').equals(rec.id).toArray()).map((b) => [b.id, b]))
+    for (const b of imgs) {
+      const v = vorher.get(b.id)
+      if (!b.driveId && v?.driveId) b.driveId = v.driveId
+      if (!b.blob && v?.blob) b.blob = v.blob // inzwischen aus Drive geladen
+      if (!b.blob) b.blob = null
+    }
+    const alt = await db.burgen.get(rec.id)
+    if (alt?.cloudStand) rec.cloudStand = alt.cloudStand
+    if (alt?.driveOrdner && !rec.driveOrdner) rec.driveOrdner = alt.driveOrdner
     await db.burgen.put(rec)
     await db.bilder.where('burgId').equals(rec.id).delete()
     if (imgs.length) await db.bilder.bulkPut(imgs)
@@ -128,7 +140,7 @@ export async function exportBackup() {
   const bilderOut = []
   for (const b of bilder) {
     const { blob, ...rest } = b
-    bilderOut.push({ ...rest, data: await blobToDataUrl(blob) })
+    if (blob) bilderOut.push({ ...rest, data: await blobToDataUrl(blob) })
   }
   return { format: 'burgen-sicherung', version: 1, exportiert: new Date().toISOString(), burgen, katalog, bilder: bilderOut }
 }

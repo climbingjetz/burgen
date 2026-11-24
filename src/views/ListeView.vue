@@ -1,11 +1,13 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { listBurgen, getHauptbilder } from '../store.js'
 import { STATUS, hasCoords } from '../fields.js'
 import { useKatalog } from '../composables/useKatalog.js'
 import { exportiere } from '../utils/export.js'
 import { toast } from '../composables/toast.js'
 import KatSelect from '../components/KatSelect.vue'
+import CloudChip from '../components/CloudChip.vue'
+import { syncState } from '../sync.js'
 
 const { label } = useKatalog()
 const burgen = ref([])
@@ -17,13 +19,17 @@ const fArt = ref('')
 const fLand = ref('')
 const auswahl = ref([])
 
-onMounted(async () => {
+async function laden() {
   burgen.value = await listBurgen()
   const map = {}
   for (const b of await getHauptbilder()) map[b.burgId] = URL.createObjectURL(b.blob)
+  Object.values(thumbs.value).forEach((u) => URL.revokeObjectURL(u))
   thumbs.value = map
   geladen.value = true
-})
+}
+onMounted(laden)
+// nach einem Abgleich neu laden (neue Burgen / heruntergeladene Bilder von anderen Geräten)
+watch(() => syncState.laeuft, (l) => !l && laden())
 onBeforeUnmount(() => Object.values(thumbs.value).forEach((u) => URL.revokeObjectURL(u)))
 
 const gefiltert = computed(() => {
@@ -126,6 +132,7 @@ const ort = (b) => [b.gemeinde, label('REGION', b.region), label('LAND', b.land)
           <div class="burg-meta">
             <span class="status" :class="b.status">{{ statusLabel(b.status) }}</span>
             <span v-if="!hasCoords(b)" class="warn" title="Keine Koordinaten">⚠ GPS</span>
+            <CloudChip :id="b.id" kurz />
           </div>
         </router-link>
       </li>

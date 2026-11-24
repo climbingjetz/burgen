@@ -1,6 +1,8 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { syncState, synchronisiere, zaehleOffen, driveRemote } from '../sync.js'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { syncState, synchronisiere, zaehleOffen, driveRemote, cloud, netzInfo, netzRegel, setNetzRegel, NETZ_REGELN, bilderErlaubt } from '../sync.js'
+import CloudChip from '../components/CloudChip.vue'
+import { mb as mbText } from '../utils/format.js'
 import { getClientId, setClientId, istVerbunden, hatGueltigesToken, anmelden, abmelden, ladeGoogle } from '../google/auth.js'
 import { exportBackup, importBackup, listBurgen } from '../store.js'
 import { download, exportiere, today } from '../utils/export.js'
@@ -72,13 +74,35 @@ const verbunden = ref(istVerbunden())
 const email = ref(localStorage.getItem('google.email') || '')
 const links = ref({})
 const online = ref(navigator.onLine)
-const onOnline = () => (online.value = navigator.onLine)
+const netz = ref(netzInfo())
+const netzOk = ref(bilderErlaubt())
+const onOnline = () => {
+  online.value = navigator.onLine
+  netz.value = netzInfo()
+  netzOk.value = bilderErlaubt()
+}
 window.addEventListener('online', onOnline)
 window.addEventListener('offline', onOnline)
+navigator.connection?.addEventListener?.('change', onOnline)
 onBeforeUnmount(() => {
   window.removeEventListener('online', onOnline)
   window.removeEventListener('offline', onOnline)
+  navigator.connection?.removeEventListener?.('change', onOnline)
 })
+function regelWaehlen(k) {
+  setNetzRegel(k)
+  onOnline()
+}
+
+// Burgen, die noch nicht vollständig in der Cloud sind
+const alleBurgen = ref([])
+const offeneBurgen = computed(() =>
+  alleBurgen.value.filter((b) => cloud[b.id] && (cloud[b.id].daten || cloud[b.id].hoch || cloud[b.id].runter)),
+)
+async function burgenLaden() {
+  alleBurgen.value = await listBurgen()
+}
+onMounted(burgenLaden)
 
 onMounted(async () => {
   zaehleOffen()
@@ -111,10 +135,11 @@ async function jetztSync() {
       email.value = u?.emailAddress || ''
       localStorage.setItem('google.email', email.value)
     }
-    const stat = await synchronisiere(remote)
+    const stat = await synchronisiere(remote, { erzwingen: true })
     links.value = remote.links
     if (stat) toast('Abgleich abgeschlossen ✓')
     anzahl.value = (await listBurgen()).length
+    burgenLaden()
   } catch (e) {
     syncState.fehler = e.message
   }
@@ -205,14 +230,54 @@ function trennen() {
           Letzter Abgleich: {{ syncState.letzter ? new Date(syncState.letzter).toLocaleString('de-DE') : 'noch nie' }}
           · Offene Änderungen: <strong>{{ syncState.offen }}</strong>
         </p>
+        <p v-if="syncState.laeuft" class="hint">
+          🔄 {{ syncState.aktuell }}
+          <template v-if="syncState.phase === 'bilder'"> · Bild {{ Math.min(syncState.bild.fertig + 1, syncState.bild.gesamt) }} von {{ syncState.bild.gesamt }} · {{ syncState.bild.prozent }} %</template>
+        </p>
         <p v-if="syncState.fehler" class="fehler">{{ syncState.fehler }}</p>
         <ul v-if="syncState.log.length" class="sync-log">
           <li v-for="(z, i) in syncState.log" :key="i">{{ z }}</li>
         </ul>
 
+        <template v-if="verbunden">
+          <h3>Upload-Status</h3>
+          <p v-if="!offeneBurgen.length && !syncState.offenSonst" class="erfolg">☁ Alles ist vollständig in der Cloud.</p>
+          <template v-else>
+            <p>
+              Noch nicht in der Cloud:
+              <strong>{{ syncState.offenDaten }}</strong> Burg(en),
+              <strong>{{ syncState.bilderHoch }}</strong> Bild(er) ({{ mbText(syncState.bytesHoch) }})<template v-if="syncState.bilderRunter">
+                · <strong>{{ syncState.bilderRunter }}</strong> Bild(er) noch nicht heruntergeladen</template>.
+              <span v-if="syncState.wartet" class="warn">{{ syncState.wartet }}</span>
+            </p>
+            <ul class="warteschlange">
+              <li v-for="b in offeneBurgen" :key="b.id">
+                <router-link :to="`/burg/${b.id}`">{{ b.name || b.id }}</router-link>
+                <CloudChip :id="b.id" />
+              </li>
+            </ul>
+            <p class="hint">Alles ist sicher auf diesem Gerät gespeichert. Der Upload läuft automatisch weiter, sobald das Netz reicht und die App geöffnet ist.</p>
+          </template>
+
+          <h3>Bilder hochladen</h3>
+          <div class="netz-regel">
+            <label v-for="r in NETZ_REGELN" :key="r.key">
+              <input type="radio" name="netzregel" :checked="netzRegel === r.key" @change="regelWaehlen(r.key)" />
+              <span>{{ r.label }}<br /><span class="hint">{{ r.hint }}</span></span>
+            </label>
+          </div>
+          <p class="hint">
+            Aktuelles Netz: <strong>{{ netz.text }}</strong> –
+            <span :class="netzOk.ok ? '' : 'warn'">{{ netzOk.ok ? 'Bilder werden übertragen' : netzOk.grund }}</span>.
+            Daten (Texte, Koordinaten) werden immer sofort übertragen, sie sind nur wenige KB groß.
+            Auf dem iPhone kann der Browser die Netzqualität nicht melden – dort wird bei jedem Netz hochgeladen
+            und bei Abbrüchen automatisch später erneut versucht.
+          </p>
+        </template>
+
         <p class="hint">
           Nach der Anmeldung gleicht die App nach jedem Speichern automatisch ab. Die Anmeldung gilt etwa eine Stunde,
-          danach hier erneut auf „Jetzt abgleichen“ tippen.
+          danach erscheint oben ein Hinweis „Anmelden &amp; hochladen“.
         </p>
         <div class="row">
           <button v-if="verbunden" class="btn small" @click="trennen">Abmelden</button>
